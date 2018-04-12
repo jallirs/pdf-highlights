@@ -10,23 +10,17 @@ from pdfminer.converter import TextConverter
 from pdfminer.pdfparser import PDFParser
 from pdfminer.pdfdocument import PDFDocument, PDFNoOutlines
 from pdfminer.psparser import PSLiteralTable, PSLiteral
+from pdfminer.pdftypes import resolve1, PDFObjRef
 import pdfminer.pdftypes as pdftypes
 import pdfminer.settings
+
+import urllib.parse
 
 from colormath.color_objects import sRGBColor, LabColor
 from colormath.color_conversions import convert_color
 from colormath.color_diff import delta_e_cie2000
 
-from jinja2 import Environment, FileSystemLoader
-import pathlib
-
-PATH = pathlib.Path(__file__).resolve().parent / '../pdf-highlights/templates/'
-TEMPLATE_ENVIRONMENT = Environment(
-    autoescape=False,
-    loader=FileSystemLoader(str(PATH)),
-    trim_blocks=True,
-    lstrip_blocks=False
-)
+from pdf_highlights.util import (TEMPLATE_ENVIRONMENT)
 
 pdfminer.settings.STRICT = False
 
@@ -150,7 +144,7 @@ class Annotation:
 
         self.page_string = None
         self.apos = self.get_start_pos()
-        self.o = None
+        o = None
         if self.get_start_pos():
             o = self.nearest_outline(outlines, mediaboxes[self.pageno])
         
@@ -158,6 +152,8 @@ class Annotation:
             self.page_string = "%d (%s)" % (self.pageno + 1, o.title)
         else:
             self.page_string = "%d" % (self.pageno + 1)
+
+        self.text = self.get_text()
 
 
     # Determine neartest color based on Delta-E difference between input and reference colors.
@@ -182,12 +178,14 @@ class Annotation:
         return likelycolor
 
     def capture(self, text):
+        if self.text == None:
+            self.text = ""
         if text == '\n':
             # kludge for latex: elide hyphens, join lines
-            if self.text.endswith('-'):
+            if self.text.endswith("-"):
                 self.text = self.text[:-1]
             else:
-                self.text += ' '
+                self.text += " "
         else:
             self.text += text
 
@@ -259,45 +257,22 @@ def normalise_to_box(pos, box):
         y = y1
     return (x, y)
 
-def prettyprint(annots, outlines, mediaboxes):
+def pretty_print(annots, outlines, mediaboxes, info):
 
-    def format_position(annot):
-        apos = annot.get_start_pos()
-        o = None
-        if apos:
-            o = "" #nearest_outline(outlines, annot.pageno, mediaboxes[annot.pageno], apos)
+    # Data in info is in bytes. We need to decode it to use it as a string.
+    # Default encoding is utf-8, which we want, so we don't set it explictly.
+    _author = "AUTHOR"
+    try:
+        _author = resolve1(info["Author"]).decode()
+    except:
+        sys.stderr.write("Author is not set.")
         
-        if o:
-            return "%d (%s)" % (annot.pageno + 1, o.title)
-        else:
-            return "%d" % (annot.pageno + 1)
-
-    def format_annotation_text(annot):
-        if annot.boxes:
-            prefix = ""
-            suffix = ""
-            if annot.colorname == "blue":
-                prefix = prefix + "## "
-            elif annot.colorname == "lilac":
-                prefix = prefix + "### "
-            elif annot.colorname == "yellow":
-                prefix = prefix + "_Quelle: "
-                suffix = suffix + "_"
-
-            suffix = suffix + "\n"
-
-            if annot.get_text():
-                return "%s%s%s" % (prefix, annot.get_text(), suffix)
-            else:
-                return "WARN: Text missing!"
-        else:
-            return ''
-
-    def print_item(color, text, position):
-        if color == 'green':
-            print(position, ": ", text, "\n")
-        else:
-            print(text, "\n")
+    _title = "TITLE"
+    _title = resolve1(info["Title"])
+    try:
+        _title = resolve1(info["Title"]).decode()
+    except:
+        sys.stderr.write("Title is not set.")
 
     highlights = [a for a in annots if a.tagname == 'highlight' and a.contents is None]
     comments = [a for a in annots if a.tagname in ['highlight', 'text'] and a.contents]
@@ -306,6 +281,10 @@ def prettyprint(annots, outlines, mediaboxes):
     template = TEMPLATE_ENVIRONMENT.get_template("markdown_template.md")
 
     md = template.render(
+        title=_title,
+        author=_author,
+        title_encoded=urllib.parse.quote(_title),
+        author_encoded=urllib.parse.quote(_author),
         highlights=highlights,
         comments=comments,
         nits=nits
@@ -383,6 +362,7 @@ def print_annots(fh):
     interpreter = PDFPageInterpreter(rsrcmgr, device)
     parser = PDFParser(fh)
     doc = PDFDocument(parser)
+    parser.set_document(doc)
 
     pagesdict = {}
     allannots = []
@@ -427,7 +407,7 @@ def print_annots(fh):
 
     device.close()
 
-    prettyprint(allannots, outlines, mediaboxes)
+    pretty_print(allannots, outlines, mediaboxes, doc.info[0])
 
 def main():
     # Check for command line parameter

@@ -19,7 +19,7 @@ setup(
     long_description='Export your PDF highlights to a markdown file.',
 
     # The project's main homepage.
-    url='https://github.com/matttrent/ibooks-highlights',
+    url='https://github.com/itst/pdf-highlights',
 
     # Author details
     author='Sascha A. Carlin',
@@ -38,17 +38,16 @@ setup(
 
         # Indicate who your project is intended for
         'Intended Audience :: Developers',
-        'Topic :: Software Development :: Build Tools',
+        'Intended Audience :: End Users/Desktop',
+        'Intended Audience :: Science/Research',
+        'Topic :: Text Processing',
+        'Topic :: Utilities'
 
         # Pick your license as you wish (should match "license" above)
         'License :: OSI Approved :: MIT License',
 
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
-        'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
     ],
 
@@ -69,7 +68,9 @@ setup(
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
         'colormath>=3.0.0',
-        'pdfminer.six>=20170720'
+        'pdfminer.six>=20170720',
+        'jinja2>=2.0.0',
+        'pathlib>=1.0.0'
     ],
 
     # List additional groups of dependencies here (e.g. development
@@ -84,9 +85,9 @@ setup(
     # If there are data files included in your packages that need to be
     # installed, specify them here.  If using Python 2.6 or less, then these
     # have to be included in MANIFEST.in as well.
-    #package_data={
-    #    'ibooks_highlights': ['templates/*.md'],
-    #},
+    package_data={
+        'pdf_highlights': ['templates/*.md'],
+    },
 
     # Although 'package_data' is the preferred approach, in some case you may
     # need to place data files outside of your packages. See:
