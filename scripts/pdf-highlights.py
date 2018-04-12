@@ -17,6 +17,17 @@ from colormath.color_objects import sRGBColor, LabColor
 from colormath.color_conversions import convert_color
 from colormath.color_diff import delta_e_cie2000
 
+from jinja2 import Environment, FileSystemLoader
+import pathlib
+
+PATH = pathlib.Path(__file__).resolve().parent / '../pdf-highlights/templates/'
+TEMPLATE_ENVIRONMENT = Environment(
+    autoescape=False,
+    loader=FileSystemLoader(str(PATH)),
+    trim_blocks=True,
+    lstrip_blocks=False
+)
+
 pdfminer.settings.STRICT = False
 
 SUBSTITUTIONS = {
@@ -41,6 +52,9 @@ COLORS = {
 ANNOT_SUBTYPES = set(['Text', 'Highlight', 'Squiggly', 'StrikeOut', 'Underline'])
 
 DEBUG_BOXHIT = False
+
+outlines = []
+mediaboxes = {}
 
 def boxhit(item, box):
     (x0, y0, x1, y1) = box
@@ -103,28 +117,20 @@ class RectExtractor(TextConverter):
 
 class Annotation:
     def __init__(self, pageno, tagname, coords=None, rect=None, contents=None, color=None):
+        global outlines
+        global mediaboxes
+        self.text = ''
         self.pageno = pageno
         self.tagname = tagname
+
+        self.rect = rect
+
         if contents == '':
             self.contents = None
         else:
             self.contents = contents
-        if color == '':
-            self.color = None
-        else:
-            self.colorname = self.getColorName(color)
-        if rect is not None:
-            self.rect = rect
-        else:
-            self.rect = None
-        self.text = ''
 
-        #print("xxx " + type(coords).__name__ + " xxx")
-        #'pdfminer.pdftypes.PDFObjRef'
-        if coords is None or isinstance(coords, pdfminer.pdftypes.PDFObjRef):
-            self.boxes = None
-        else:
-        #try:
+        if isinstance(coords, list):
             assert len(coords) % 8 == 0
             self.boxes = []
             while coords != []:
@@ -134,16 +140,34 @@ class Annotation:
                 yvals = [y0, y1, y2, y3]
                 box = (min(xvals), min(yvals), max(xvals), max(yvals))
                 self.boxes.append(box)
-        #except:
-        #    sys.stderr.write('No boxes found')
+        else:
+            self.boxes = None
+
+        if isinstance(color, list):
+            self.colorname = self._get_color_name(color)
+        else:
+            self.colorname = 'green'
+
+        self.page_string = None
+        self.apos = self.get_start_pos()
+        self.o = None
+        if self.get_start_pos():
+            o = self.nearest_outline(outlines, mediaboxes[self.pageno])
+        
+        if o:
+            self.page_string = "%d (%s)" % (self.pageno + 1, o.title)
+        else:
+            self.page_string = "%d" % (self.pageno + 1)
+
 
     # Determine neartest color based on Delta-E difference between input and reference colors.
-    def getColorName(self, color):
+    def _get_color_name(self, color):
         # Create sRGBColor object from input
         try:
             annotationcolor = sRGBColor(color[0], color[1], color[2])
         except TypeError:
             # In case something goes wrong, return green
+            sys.stderr.write('Given objetc is not a list: ' + color)
             return 'green'
 
         deltae = {}
@@ -167,14 +191,15 @@ class Annotation:
         else:
             self.text += text
 
-    def gettext(self):
+    def get_text(self):
         if self.text:
             # replace tex ligatures (and other common odd characters)
+            # trim text
             return ''.join([SUBSTITUTIONS.get(c, c) for c in self.text.strip()])
         else:
             return None
 
-    def getstartpos(self):
+    def get_start_pos(self):
         try: 
             if self.rect:
                 (x0, y0, x1, y1) = self.rect
@@ -184,7 +209,28 @@ class Annotation:
             return None
         return (min(x0, x1), max(y0, y1)) # assume left-to-right top-to-bottom text :)
 
-def getannots(pdfannots, pageno):
+    def nearest_outline(self, outlines, mediabox):
+        (x, y) = normalise_to_box(self.apos, mediaboxes[self.pageno])
+        prev = None
+        for o in outlines:
+            if o.pageno < self.pageno:
+                prev = o
+            elif o.pageno > self.pageno:
+                return prev
+            else:
+                # XXX: assume two-column left-to-right top-to-bottom documents
+                (ox, oy) = normalise_to_box((o.x, o.y), mediabox)
+                (x0, y0, x1, y1) = mediabox
+                colwidth = (x1 - x0) / 2
+                outline_col = (ox - x0) // colwidth
+                pos_col = (x - x0) // colwidth
+                if outline_col > pos_col or (outline_col == pos_col and o.y < y):
+                    return prev
+                else:
+                    prev = o
+        return prev
+
+def get_annots(pdfannots, pageno):
     annots = []
     for pa in pdfannots:
         subtype = pa.get('Subtype')
@@ -213,98 +259,86 @@ def normalise_to_box(pos, box):
         y = y1
     return (x, y)
 
-def nearest_outline(outlines, pageno, mediabox, pos):
-    (x, y) = normalise_to_box(pos, mediabox)
-    prev = None
-    for o in outlines:
-        if o.pageno < pageno:
-            prev = o
-        elif o.pageno > pageno:
-            return prev
-        else:
-            # XXX: assume two-column left-to-right top-to-bottom documents
-            (ox, oy) = normalise_to_box((o.x, o.y), mediabox)
-            (x0, y0, x1, y1) = mediabox
-            colwidth = (x1 - x0) / 2
-            outline_col = (ox - x0) // colwidth
-            pos_col = (x - x0) // colwidth
-            if outline_col > pos_col or (outline_col == pos_col and o.y < y):
-                return prev
-            else:
-                prev = o
-    return prev
-
-
 def prettyprint(annots, outlines, mediaboxes):
 
-    def fmtpos(annot):
-        apos = annot.getstartpos()
+    def format_position(annot):
+        apos = annot.get_start_pos()
+        o = None
         if apos:
-            o = nearest_outline(outlines, annot.pageno, mediaboxes[annot.pageno], apos)
-        else:
-            o = None
+            o = "" #nearest_outline(outlines, annot.pageno, mediaboxes[annot.pageno], apos)
         
         if o:
-            return "\nSeite %d (%s)" % (annot.pageno + 1, o.title)
+            return "%d (%s)" % (annot.pageno + 1, o.title)
         else:
-            return "\nSeite %d" % (annot.pageno + 1)
+            return "%d" % (annot.pageno + 1)
 
-    def fmttext(annot):
+    def format_annotation_text(annot):
         if annot.boxes:
-            prefix = "\n"
-            if annot.colorname == 'blue':
-                prefix = prefix + '## '
-            elif annot.colorname == 'lilac':
-                prefix = prefix + '### '
-            elif annot.colorname == 'yellow':
-                prefix = prefix + 'Quellenangabe: '
+            prefix = ""
+            suffix = ""
+            if annot.colorname == "blue":
+                prefix = prefix + "## "
+            elif annot.colorname == "lilac":
+                prefix = prefix + "### "
+            elif annot.colorname == "yellow":
+                prefix = prefix + "_Quelle: "
+                suffix = suffix + "_"
 
-            if annot.gettext():
-                return prefix + '%s' % annot.gettext()
+            suffix = suffix + "\n"
+
+            if annot.get_text():
+                return "%s%s%s" % (prefix, annot.get_text(), suffix)
             else:
-                return "(XXX: missing text!)"
+                return "WARN: Text missing!"
         else:
             return ''
 
-    def printitem(*args):
-        msg = ' '.join(args)
-        print(msg)
+    def print_item(color, text, position):
+        if color == 'green':
+            print(position, ": ", text, "\n")
+        else:
+            print(text, "\n")
 
-    nits = [a for a in annots if a.tagname in ['squiggly', 'strikeout', 'underline']]
-    comments = [a for a in annots if a.tagname in ['highlight', 'text'] and a.contents]
     highlights = [a for a in annots if a.tagname == 'highlight' and a.contents is None]
+    comments = [a for a in annots if a.tagname in ['highlight', 'text'] and a.contents]
+    nits = [a for a in annots if a.tagname in ['squiggly', 'strikeout', 'underline']]
 
-    if highlights:
-        print("# Highlights")
-        for a in highlights:
-            printitem(fmttext(a), fmtpos(a))
+    template = TEMPLATE_ENVIRONMENT.get_template("markdown_template.md")
 
-    if comments:
-        if highlights:
-            print() # blank
-        print("# Detailed comments")
-        for a in comments:
-            text = fmttext(a)
-            if text:
-                # XXX: lowercase the first word, to join it to the "Regarding" sentence
-                contents = a.contents
-                firstword = contents.split()[0]
-                if firstword != 'I' and not firstword.startswith("I'"):
-                    contents = contents[0].lower() + contents[1:]
-                printitem(fmtpos(a), "Regarding", text + ",", contents)
-            else:
-                printitem(fmtpos(a), a.contents)
+    md = template.render(
+        highlights=highlights,
+        comments=comments,
+        nits=nits
+    )
 
-    if nits:
-        if highlights or comments:
-            print() #  blank
-        print("# Nits")
-        for a in nits:
-            text = fmttext(a)
-            if a.contents:
-                printitem(fmtpos(a), "%s -> %s" % (text, a.contents))
-            else:
-                printitem(fmtpos(a), "%s" % text)
+    print(md)
+    
+    # if highlights:
+    #     print("# Highlights")
+    #     for a in highlights:
+    #         print_item(a.colorname, format_annotation_text(a), format_position(a))
+
+    # if comments:
+    #     if highlights:
+    #         print() # blank
+    #     print("# Detailed comments")
+    #     for a in comments:
+    #         text = format_annotation_text(a)
+    #         if text:
+    #             print_item(a.colorname, format_position(a), "Regarding", text + ",", contents)
+    #         else:
+    #             print_item(a.colorname, format_position(a), a.contents)
+
+    # if nits:
+    #     if highlights or comments:
+    #         print() #  blank
+    #     print("# Nits")
+    #     for a in nits:
+    #         text = format_annotation_text(a)
+    #         if a.contents:
+    #             print_item(a.colorname, format_position(a), "%s -> %s" % (text, a.contents))
+    #         else:
+    #             print_item(a.colorname, format_position(a), "%s" % text)
 
 def resolve_dest(doc, dest):
     if isinstance(dest, bytes):
@@ -340,7 +374,9 @@ def get_outlines(doc, pagesdict):
         result.append(Outline(title, destname, pageno, targetx, targety))
     return result
 
-def printannots(fh):
+def print_annots(fh):
+    global outlines
+    global mediaboxes
     rsrcmgr = PDFResourceManager()
     laparams = LAParams()
     device = RectExtractor(rsrcmgr, laparams=laparams)
@@ -349,34 +385,10 @@ def printannots(fh):
     doc = PDFDocument(parser)
 
     pagesdict = {}
-    mediaboxes = {}
     allannots = []
 
-    for (pageno, page) in enumerate(PDFPage.create_pages(doc)):
-        pagesdict[page.pageid] = pageno
-        mediaboxes[pageno] = page.mediabox
-        if page.annots is None or page.annots == []:
-            continue
-
-        # emit progress indicator
-        sys.stderr.write((" " if pageno > 0 else "") + "%d" % (pageno + 1))
-        sys.stderr.flush()
-
-        pdfannots = []
-        for a in pdftypes.resolve1(page.annots):
-            if isinstance(a, pdftypes.PDFObjRef):
-                pdfannots.append(a.resolve())
-            else:
-                sys.stderr.write('Warning: unknown annotation: %s\n' % a)
-
-        pageannots = getannots(pdfannots, pageno)
-        device.setcoords(pageannots)
-        interpreter.process_page(page)
-        allannots.extend(pageannots)
-
-    sys.stderr.write("\n")
-
-    outlines = []
+    #Get outlines. We need them for the loop, to be able to use them in Annotations to determine page numbers.
+    #outlines = []
     try:
         outlines = get_outlines(doc, pagesdict)
     except PDFNoOutlines:
@@ -385,23 +397,53 @@ def printannots(fh):
         e = sys.exc_info()[0]
         sys.stderr.write("Warning: failed to retrieve outlines: %s\n" % e)
 
+    # Iterate over the PDF's pages
+    for (pageno, page) in enumerate(PDFPage.create_pages(doc)):
+        pagesdict[page.pageid] = pageno
+        mediaboxes[pageno] = page.mediabox
+        
+        # If PDFMiner could not extract any annotation from the current page, skip to the next.
+        if page.annots is None or page.annots == []:
+            continue
+
+        # emit progress indicator
+        sys.stderr.write((" " if pageno > 0 else "") + "%d" % (pageno + 1))
+        sys.stderr.flush()
+
+        # Iterator over the page's annotations and resolve them via PDFMiner.
+        pdfannots = []
+        for a in pdftypes.resolve1(page.annots):
+            if isinstance(a, pdftypes.PDFObjRef):
+                pdfannots.append(a.resolve())
+            else:
+                sys.stderr.write('Warning: unknown annotation: %s\n' % a)
+
+        pageannots = get_annots(pdfannots, pageno)
+        device.setcoords(pageannots)
+        interpreter.process_page(page)
+        allannots.extend(pageannots)
+
+    sys.stderr.write("\n")
+
     device.close()
 
     prettyprint(allannots, outlines, mediaboxes)
 
 def main():
+    # Check for command line parameter
     if len(sys.argv) != 2:
         sys.stderr.write("Usage: %s FILE.PDF\n" % sys.argv[0])
         sys.exit(1)
 
+    # If parameter is given, check whether it can be opened as a file.
     try:
         fh = open(sys.argv[1], 'rb')
     except OSError as e:
         sys.stderr.write("Error: %s\n" % e)
         sys.exit(1)
-    else:
-        with fh:
-            printannots(fh)
+
+    # Let's go!
+    print_annots(fh)
 
 if __name__ == "__main__":
     main()
