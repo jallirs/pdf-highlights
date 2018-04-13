@@ -1,7 +1,8 @@
 # About
 
-This is a script that extracts annotations (highlights, comments,
-etc.) from a PDF file, and formats them as plain text.
+This script extracts extracts annotations (highlights, comments, etc.) from a PDF file, and formats them as plain text.
+
+The scripts uses `colormath` to identify the highlights' colors, see [the wiki](https://github.com/itst/pdf-highlights/wiki/Interpreting-colors). The default template uses these colors to [determine hierarchy and meaning](https://github.com/itst/pdf-highlights/wiki/Interpreting-annotations]).
 
 At present, the following annotations are supported:
 
