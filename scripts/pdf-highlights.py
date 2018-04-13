@@ -283,7 +283,7 @@ def pretty_print(annots, outlines, mediaboxes, info):
 
     highlights = [a for a in annots if a.subtype == 'highlight' and a.contents is None]
     comments = [a for a in annots if a.subtype in ['highlight', 'text'] and a.contents]
-    nits = [a for a in annots if a.subtype in ['squiggly', 'strikeout', 'underline']]
+    editing = [a for a in annots if a.subtype in ['squiggly', 'strikeout', 'underline']]
 
     template = TEMPLATE_ENVIRONMENT.get_template("markdown_template.md")
 
@@ -294,7 +294,7 @@ def pretty_print(annots, outlines, mediaboxes, info):
         author_encoded=urllib.parse.quote(_author),
         highlights=highlights,
         comments=comments,
-        nits=nits
+        editing=editing
     )
 
     print(md)
