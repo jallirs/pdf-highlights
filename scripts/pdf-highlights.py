@@ -110,12 +110,14 @@ class RectExtractor(TextConverter):
         render(ltpage)
 
 class Annotation:
-    def __init__(self, pageno, tagname, coords=None, rect=None, contents=None, color=None):
+    def __init__(self, pageno, subtype, coords=None, rect=None, contents=None, color=None):
         global outlines
         global mediaboxes
         self.text = ''
         self.pageno = pageno
-        self.tagname = tagname
+        
+        # For supported subtypes see ANNOT_SUBTYPES
+        self.subtype = subtype
 
         self.rect = rect
 
@@ -124,6 +126,7 @@ class Annotation:
         else:
             self.contents = contents
 
+        # PDf magic. Need to understand what happens here.
         if isinstance(coords, list):
             assert len(coords) % 8 == 0
             self.boxes = []
@@ -137,11 +140,14 @@ class Annotation:
         else:
             self.boxes = None
 
+        # We cannot know all greens and yellows, so we use colormath.
+        # Default to green, which will mark the annotation as being a simple, unhierarchical highlight.
         if isinstance(color, list):
             self.colorname = self._get_color_name(color)
         else:
             self.colorname = 'green'
 
+        # Prepare page_string, using the page's title if the document has an outline.
         self.page_string = None
         self.apos = self.get_start_pos()
         o = None
@@ -189,6 +195,7 @@ class Annotation:
         else:
             self.text += text
 
+    # Do we really need that?
     def get_text(self):
         if self.text:
             # replace tex ligatures (and other common odd characters)
@@ -274,9 +281,9 @@ def pretty_print(annots, outlines, mediaboxes, info):
     except:
         sys.stderr.write("Title is not set.")
 
-    highlights = [a for a in annots if a.tagname == 'highlight' and a.contents is None]
-    comments = [a for a in annots if a.tagname in ['highlight', 'text'] and a.contents]
-    nits = [a for a in annots if a.tagname in ['squiggly', 'strikeout', 'underline']]
+    highlights = [a for a in annots if a.subtype == 'highlight' and a.contents is None]
+    comments = [a for a in annots if a.subtype in ['highlight', 'text'] and a.contents]
+    nits = [a for a in annots if a.subtype in ['squiggly', 'strikeout', 'underline']]
 
     template = TEMPLATE_ENVIRONMENT.get_template("markdown_template.md")
 
