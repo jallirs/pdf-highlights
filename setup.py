@@ -53,7 +53,7 @@ setup(
     ],
 
     # What does your project relate to?
-    keywords='sample setuptools development',
+    keywords='pdf annotations highlights export plain text template markdown outline',
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
