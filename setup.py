@@ -19,7 +19,8 @@ setup(
     long_description='Export your PDF highlights to a markdown file.',
 
     # The project's main homepage.
-    url='https://github.com/itst/pdf-highlights',
+    url='https://github.com/itst/pdf-highlights/',
+    download_url='https://github.com/itst/pdf-highlights/archive/0.1.0.tar.gz',
 
     # Author details
     author='Sascha A. Carlin',
@@ -41,7 +42,7 @@ setup(
         'Intended Audience :: End Users/Desktop',
         'Intended Audience :: Science/Research',
         'Topic :: Text Processing',
-        'Topic :: Utilities'
+        'Topic :: Utilities',
 
         # Pick your license as you wish (should match "license" above)
         'License :: OSI Approved :: MIT License',
