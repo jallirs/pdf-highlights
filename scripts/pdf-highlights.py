@@ -275,7 +275,6 @@ def pretty_print(annots, outlines, mediaboxes, info):
         sys.stderr.write("Author is not set.")
         
     _title = "TITLE"
-    _title = resolve1(info["Title"])
     try:
         _title = resolve1(info["Title"]).decode()
     except:
