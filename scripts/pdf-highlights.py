@@ -418,7 +418,7 @@ def print_annots(fh):
 def main():
     # Check for command line parameter
     if len(sys.argv) != 2:
-        sys.stderr.write("Usage: %s FILE.PDF\n" % sys.argv[0])
+        sys.stderr.write("Usage: %s FILE.PDF [> OUTPUT]\n" % sys.argv[0])
         sys.exit(1)
 
     # If parameter is given, check whether it can be opened as a file.
