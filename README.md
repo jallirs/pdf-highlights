@@ -33,7 +33,7 @@ See [the wiki](https://github.com/itst/pdf-highlights/wiki/Interpreting-annotati
 
 # Usage
 
-    pdf-highlights.py INPUT > OUTPUT
+    pdf-highlights.py FILE.PDF [> OUTPUT]
 
 # Dependencies
  
