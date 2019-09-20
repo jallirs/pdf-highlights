@@ -36,7 +36,7 @@ virtualenv /var/lib/pdf-highlights-venv
 
 # Deactivate the old bootstrap virtualenv and switch to the new one
 deactivate
-source /var/lib/pdf-highlights/bin/activate
+source /var/lib/pdf-highlights-venv/bin/activate
 
 # Install python packages not included as rpms
 pip3 install --upgrade ${PIP_ARGS} $@
