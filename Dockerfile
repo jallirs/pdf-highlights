@@ -5,9 +5,9 @@ RUN set -ex ;\
     apt-get update ;\
     apt-get upgrade -y ;\
     apt-get install -y \
-      python \
+      python3 \
       virtualenv \
-      python-dev \
+      python3-dev \
       gcc \
       git
       
